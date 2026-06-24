@@ -1,0 +1,25 @@
+{
+  "name": "waybill",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A verifiable Fugu-style orchestrator (TDX enclave, signed receipts, on-chain anchor).",
+  "bin": {
+    "waybill-verify": "src/verify.ts"
+  },
+  "scripts": {
+    "start": "tsx src/app.ts",
+    "verify": "tsx src/verify.ts",
+    "test": "tsx --test test/waybill.test.ts",
+    "build:web": "cd web && npm install && npm run build"
+  },
+  "dependencies": {
+    "ethers": "^6.13.0",
+    "express": "^4.19.0",
+    "tsx": "^4.16.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0"
+  }
+}

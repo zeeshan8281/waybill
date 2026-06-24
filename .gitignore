@@ -1,0 +1,12 @@
+node_modules/
+.env
+public/
+
+# receipt/chain dumps written by the verifier (root level only)
+/*.json
+!package.json
+!tsconfig.json
+
+# private design system — see README (vendor it or install with GITHUB_TOKEN)
+web/vendor/
+*.tsbuildinfo
