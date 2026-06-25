@@ -45,6 +45,14 @@ export function receiptHash(receipt: Record<string, unknown>): string {
   return sha256Hex(canonical(body));
 }
 
+export interface ReceiptStep {
+  seq: number;
+  role: string;
+  model: string;
+  input_hash: string;
+  output_hash: string;
+}
+
 /** Assemble + sign a receipt. Returns the receipt incl. signature + its hash. */
 export async function build(args: {
   taskId: string;
@@ -54,6 +62,7 @@ export async function build(args: {
   imageDigest: string;
   prevHash: string;
   seq: number;
+  steps?: ReceiptStep[];
 }): Promise<Receipt> {
   const receipt: Record<string, unknown> = {
     task_id: args.taskId,
@@ -61,6 +70,8 @@ export async function build(args: {
     candidates: policy.CANDIDATES,
     chosen_model: args.chosenModel,
     policy_hash: policy.POLICY_HASH,
+    // The signed lineage of orchestration steps (draft → critique → revise).
+    ...(args.steps ? { steps: args.steps } : {}),
     response_hash: sha256Hex(args.response),
     image_digest: args.imageDigest,
     prev_hash: args.prevHash,

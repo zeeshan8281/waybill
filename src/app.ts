@@ -21,6 +21,7 @@ import * as adapters from "./adapters.js";
 import * as anchor from "./anchor.js";
 import { readAttestation } from "./attestation.js";
 import * as policy from "./policy.js";
+import { runPipeline } from "./pipeline.js";
 import * as receiptMod from "./receipt.js";
 import * as signer from "./signer.js";
 
@@ -71,26 +72,102 @@ app.post("/route", async (req, res) => {
 
   try {
     const chosen = policy.route(prompt);
-    const response = await adapters.callModel(chosen, prompt);
+
+    // Conduct the multi-step pipeline (draft → critique → revise) in the enclave.
+    const { steps, answer } = await runPipeline(chosen, prompt);
+    const receiptSteps = steps.map((s) => ({
+      seq: s.seq,
+      role: s.role,
+      model: s.model,
+      input_hash: receiptMod.sha256Hex(s.input),
+      output_hash: receiptMod.sha256Hex(s.output),
+    }));
 
     const prevHash = chain.length ? chain[chain.length - 1].hash : receiptMod.ZERO_HASH;
     const rcpt = await receiptMod.build({
       taskId: randomUUID(),
       prompt,
       chosenModel: chosen,
-      response,
+      response: answer,
       imageDigest: IMAGE_DIGEST,
       prevHash,
       seq: chain.length,
+      steps: receiptSteps,
     });
     rcpt.anchor_tx = await anchor.anchor(rcpt.hash);
     chain.push(rcpt);
 
-    res.json({ answer: response, receipt: rcpt });
+    // Step outputs are returned for display (not in the signed body) — the UI
+    // re-checks each output_hash in the browser.
+    res.json({
+      answer,
+      receipt: rcpt,
+      steps: steps.map((s) => ({ seq: s.seq, role: s.role, model: s.model, output: s.output })),
+    });
   } catch (e) {
     // A provider/model error must never crash the enclave. Return it, stay up.
     console.error("route failed:", e);
     res.status(502).json({ error: "model call failed", detail: (e as Error).message });
+  }
+});
+
+// Streaming variant — emits the orchestration as it happens (NDJSON), so the UI
+// can show each pipeline step land live instead of waiting on the whole run.
+app.post("/route/stream", async (req, res) => {
+  const prompt: string = req.body?.prompt;
+  if (typeof prompt !== "string") {
+    res.status(422).json({ error: "prompt (string) is required" });
+    return;
+  }
+  res.setHeader("content-type", "application/x-ndjson");
+  res.setHeader("cache-control", "no-cache, no-transform");
+  res.setHeader("x-accel-buffering", "no"); // ask proxies not to buffer
+  res.flushHeaders();
+  const send = (o: unknown) => res.write(JSON.stringify(o) + "\n");
+
+  try {
+    const taskId = randomUUID();
+    const chosen = policy.route(prompt);
+    send({ id: "input", label: "Hash task input", detail: `input_hash ${receiptMod.sha256Hex(prompt).slice(0, 18)}…` });
+    send({ id: "policy", label: "Evaluate routing policy", detail: `candidates [${policy.CANDIDATES.join(", ")}]` });
+    send({ id: "route", label: `Route → ${chosen}`, detail: `chosen_model = ${chosen}` });
+
+    const { steps, answer } = await runPipeline(chosen, prompt, {
+      onStepStart: (seq, role) => { send({ pstep: true, seq, role, state: "active" }); },
+      onStepDone: (s) => {
+        send({ pstep: true, seq: s.seq, role: s.role, state: "done", output: s.output, output_hash: receiptMod.sha256Hex(s.output) });
+      },
+    });
+
+    const receiptSteps = steps.map((s) => ({
+      seq: s.seq,
+      role: s.role,
+      model: s.model,
+      input_hash: receiptMod.sha256Hex(s.input),
+      output_hash: receiptMod.sha256Hex(s.output),
+    }));
+    const prevHash = chain.length ? chain[chain.length - 1].hash : receiptMod.ZERO_HASH;
+    const rcpt = await receiptMod.build({
+      taskId,
+      prompt,
+      chosenModel: chosen,
+      response: answer,
+      imageDigest: IMAGE_DIGEST,
+      prevHash,
+      seq: chain.length,
+      steps: receiptSteps,
+    });
+    send({ id: "sign", label: "Sign receipt · KMS enclave wallet", detail: `signer ${(rcpt.signer as string).slice(0, 16)}…` });
+    rcpt.anchor_tx = await anchor.anchor(rcpt.hash);
+    chain.push(rcpt);
+    send({ id: "chain", label: "Chain receipt", detail: `seq ${rcpt.seq}` });
+
+    send({ done: true, answer, receipt: rcpt });
+  } catch (e) {
+    console.error("route/stream failed:", e);
+    send({ error: (e as Error).message });
+  } finally {
+    res.end();
   }
 });
 

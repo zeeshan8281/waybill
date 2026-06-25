@@ -4,6 +4,7 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
+    { "source": "/route/stream", "destination": "http://35.204.50.75:8080/route/stream" },
     { "source": "/route", "destination": "http://35.204.50.75:8080/route" },
     { "source": "/chain", "destination": "http://35.204.50.75:8080/chain" },
     { "source": "/verify", "destination": "http://35.204.50.75:8080/verify" },

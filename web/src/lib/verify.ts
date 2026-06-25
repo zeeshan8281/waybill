@@ -14,6 +14,7 @@ export interface Receipt {
   hash: string;
   signer: string;
   anchor_tx: string | null;
+  steps?: Array<{ seq: number; role: string; model: string; input_hash: string; output_hash: string }>;
 }
 
 export interface Attestation {
