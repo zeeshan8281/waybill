@@ -20,6 +20,17 @@ Routing logic runs inside an **Intel TDX enclave** on [EigenCompute](https://www
 > enclave (Sakana Fugu). Call it a *"verifiable Fugu-style orchestrator"*, never *"verifiable Fugu"*.
 > Read the [trust model](#what-a-receipt-proves--does-not-prove) before you tweet.
 
+## 🔴 Live
+
+| | |
+|---|---|
+| **App (Vercel frontend → TEE)** | https://web-zeeshan8281s-projects.vercel.app |
+| **TEE attestation dashboard** | https://verify-sepolia.eigencloud.xyz/app/0xAD17BcC6776b91dCb3BEC81F686bCf09C2F4CD54 |
+| **Enclave signer (KMS-derived)** | `0xa2836D80B0EaDa676ac8f3c3E78C400a4ceBe73a` |
+
+Running in a real Intel TDX enclave (`/verify` reports `source: "tee"`, `key_source: "kms-mnemonic"`),
+routing to `fugu-ultra` and signing each receipt with the KMS-bound enclave wallet.
+
 ## What is this?
 
 An LLM router is a trust black box: it claims it sent your hard task to the strong model and your
@@ -217,6 +228,16 @@ injected into the enclave, bound to the app + attested image) — see
 [Key custody](#key-custody--the-verifiable-kms). You set no signing key; the operator can't extract
 one. Verify the enclave, image digest, and the app's Derived Address at
 `https://verify-sepolia.eigencloud.xyz/app/<APP_ID>`.
+
+### Model egress (datacenter IP blocks)
+
+Some model providers (Sakana among them) **403 requests from cloud/datacenter IPs** — so the same key
+that works from a laptop fails from inside the enclave. The fix is to re-originate the model call from
+an allowed IP: a tiny egress proxy ([`web/api/chat/completions.ts`](web/api/chat/completions.ts) on
+Vercel) forwards to OpenRouter, and the TEE points `FUGU_API_URL` at it. This **doesn't touch the
+trust model** — inference is outside the enclave either way; the signed receipt still attests "router
+asked for `fugu-ultra`, got hash H". Set `FUGU_API_URL=https://<your-proxy>/api` (unset → call the
+provider directly).
 
 ### On-chain anchoring (optional)
 
