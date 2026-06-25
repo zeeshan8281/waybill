@@ -4,9 +4,9 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/route", "destination": "https://__BACKEND_HOST__/route" },
-    { "source": "/chain", "destination": "https://__BACKEND_HOST__/chain" },
-    { "source": "/verify", "destination": "https://__BACKEND_HOST__/verify" },
-    { "source": "/healthz", "destination": "https://__BACKEND_HOST__/healthz" }
+    { "source": "/route", "destination": "http://35.204.50.75:8080/route" },
+    { "source": "/chain", "destination": "http://35.204.50.75:8080/chain" },
+    { "source": "/verify", "destination": "http://35.204.50.75:8080/verify" },
+    { "source": "/healthz", "destination": "http://35.204.50.75:8080/healthz" }
   ]
 }
