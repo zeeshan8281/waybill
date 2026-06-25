@@ -298,6 +298,7 @@ export function App() {
                 <Field k="prev_hash" v={result.receipt.prev_hash} />
                 <Field k="hash" v={result.receipt.hash} hl />
                 <Field k="signature" v={result.receipt.signature} />
+                <Field k="signer" v={result.receipt.signer} hl />
               </dl>
             </CardContent>
           </Card>
