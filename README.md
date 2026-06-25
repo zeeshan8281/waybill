@@ -4,11 +4,10 @@
 
 **A verifiable Fugu-style orchestrator.**
 
-Routing logic runs inside an **Intel TDX enclave** on [EigenCompute](https://www.eigencloud.xyz/) and signs a receipt for every decision —
-`{ task → model chosen → response hash }` — hash-chained and anchored on-chain.
-Anyone can verify *which* model the orchestrator picked, that the router wasn't tampered with, and that the log wasn't reordered. **Trusting neither you nor your cloud.**
+Routing logic runs inside an **Intel TDX enclave** on [EigenCompute](https://www.eigencloud.xyz/) and signs a hash-chained receipt for every decision —
+`{ task → model chosen → response hash }`. The router's image digest is recorded on-chain and its signing key is KMS-bound to the enclave, so anyone can verify *which* model the orchestrator picked, that the router wasn't tampered with, and that the log wasn't reordered — **trusting neither you nor your cloud.**
 
-[Trust model](#what-a-receipt-proves--does-not-prove) · [Quickstart](#quickstart-local) · [API](#http-api) · [Verify](#verify-trusting-no-one) · [Deploy](#deploy-to-eigencompute-tdx--sepolia)
+[Trust model](#what-a-receipt-proves--does-not-prove) · [Key custody](#key-custody--the-verifiable-kms) · [Quickstart](#quickstart-local) · [API](#http-api) · [Verify](#verify-trusting-no-one) · [Deploy](#deploy-to-eigencompute-tdx)
 
 ![Waybill UI — a routed task with its receipt re-verified in the browser](docs/screenshot.png)
 
@@ -37,11 +36,15 @@ router image, running in a genuine TEE.
 ```
                 ┌──────────────── Intel TDX enclave (EigenCompute) ─────────────────┐
   task  ───────▶│  hash input → run policy → call Fugu model → hash response         │
-                │  → build receipt → sign (enclave-sealed key) → anchor on Sepolia   │
+                │  → build receipt → sign (KMS-bound enclave key) → hash-chain it     │
                 └───────────────────────────────────────────────────────────────────┘
                                               │
                                               ▼
                           answer  +  signed receipt  +  verify link
+
+  on-chain: the enclave's image digest is recorded on the AppController contract
+  at deploy (EigenCompute does this). Per-receipt Sepolia anchoring is optional —
+  see "On-chain anchoring (optional)".
 ```
 
 A **receipt** is canonical JSON like:
@@ -59,8 +62,8 @@ A **receipt** is canonical JSON like:
   "seq":           7,
   "hash":          "sha256(everything above)",
   "signature":     "enclave key over `hash`",
-  "signer":        "0x… enclave address",
-  "anchor_tx":     "0x… Sepolia tx, or null"
+  "signer":        "0x… KMS-derived enclave address",
+  "anchor_tx":     "0x… Sepolia tx, or null (anchoring is optional)"
 }
 ```
 
@@ -69,7 +72,7 @@ A **receipt** is canonical JSON like:
 **Proves**
 - the routing decision was made by the exact image whose digest is recorded on-chain, in a genuine TDX enclave;
 - for each task — the candidate models, the chosen model, the policy hash, and the response hash;
-- the log is complete and correctly ordered (hash-chain + on-chain anchor).
+- the log is internally complete and correctly ordered (signed hash-chain: `prev_hash` + monotonic `seq`).
 
 **Does NOT prove**
 - that the answer is *correct*;
@@ -97,10 +100,10 @@ curl -sX POST localhost:8080/route -H 'content-type: application/json' \
   -d '{"prompt":"fix the bug in this function"}'
 ```
 
-Runs **offline by default**: deterministic mock Fugu responses, no anchoring. For real routing set
-either `SAKANA_API_KEY` ([console.sakana.ai](https://console.sakana.ai)) or `OPENROUTER_API_KEY`
-([openrouter.ai/sakana/fugu-ultra](https://openrouter.ai/sakana/fugu-ultra)) in a local `.env`, and
-`WAYBILL_RPC_URL` (Sepolia) to anchor every receipt.
+Runs **offline by default**: deterministic mock Fugu responses. For real routing set either
+`SAKANA_API_KEY` ([console.sakana.ai](https://console.sakana.ai)) or `OPENROUTER_API_KEY`
+([openrouter.ai/sakana/fugu-ultra](https://openrouter.ai/sakana/fugu-ultra)) in a local `.env`.
+(On-chain anchoring is optional and off by default — see [below](#on-chain-anchoring-optional).)
 
 > **Backend only?** `npm install && npm start` is enough for the API + verifier CLI. The UI build
 > step is the only part that needs the design system below.
@@ -109,7 +112,7 @@ either `SAKANA_API_KEY` ([console.sakana.ai](https://console.sakana.ai)) or `OPE
 
 | Method & path | Body | Returns |
 |---|---|---|
-| `POST /route` | `{ "prompt": "…" }` | `{ answer, receipt }` — routes, signs, anchors |
+| `POST /route` | `{ "prompt": "…" }` | `{ answer, receipt }` — routes, signs, hash-chains (anchors if enabled) |
 | `GET /chain` | — | `{ signer, receipts }` — the hash-chained log for this run |
 | `GET /verify` | — | `{ signer, policy_hash, anchoring, attestation }` — TEE attestation snapshot |
 | `GET /healthz` | — | liveness + signer + image digest + receipt count |
@@ -141,7 +144,7 @@ What it checks (offline unless `WAYBILL_RPC_URL` is set for the anchor step):
 2. the signature recovers to the receipt's signer address;
 3. *(chain)* `prev_hash` links and `seq` is monotonic from 0;
 4. *(`--prompt`/`--answer`)* `input_hash` / `response_hash` match what you actually got;
-5. *(RPC set)* `anchor_tx` is mined, sent from the signer, and its calldata equals the receipt hash.
+5. *(only if anchoring is on)* `anchor_tx` is mined, sent from the signer, and its calldata equals the receipt hash.
 
 The enclave/image step (TD Quote + on-chain image digest) is the EigenCompute verify dashboard:
 `https://verify-sepolia.eigencloud.xyz/app/<APP_ID>`.
@@ -192,7 +195,7 @@ which routing logic ran. Two real [Sakana Fugu](https://sakana.ai/fugu/) tiers:
 
 Bring your own policy by editing `RULES` + `route()`; swap in a classifier if keyword matching falls short.
 
-## Deploy to EigenCompute (TDX, Sepolia)
+## Deploy to EigenCompute (TDX)
 
 ```bash
 docker build --platform linux/amd64 \
@@ -202,7 +205,6 @@ docker build --platform linux/amd64 \
 
 # No signing key here — the KMS injects MNEMONIC into the enclave automatically.
 ecloud compute app env set \
-  WAYBILL_RPC_URL=https://sepolia... \
   SAKANA_API_KEY=... IMAGE_DIGEST=<digest> ECLOUD_APP_ID=<app-id>
 
 rm -f Dockerfile && touch .env
@@ -211,10 +213,26 @@ echo n | ecloud compute app deploy --name waybill --image-ref <registry/waybill:
   --log-visibility public --resource-usage-monitoring enable --verbose
 ```
 
-The signing wallet is **KMS-derived** (`MNEMONIC`, injected into the enclave, bound to the app +
-attested image) — see [Key custody](#key-custody--the-verifiable-kms). You set no signing key; the
-operator can't extract one. Verify the enclave + image digest, and the app's Derived Address, at
+EigenCompute records the **image digest on the `AppController` contract** and produces a TEE
+attestation automatically — that's the on-chain anchor of *what code ran*, and it's the whole on-chain
+story by default (no per-receipt transactions). The signing wallet is **KMS-derived** (`MNEMONIC`,
+injected into the enclave, bound to the app + attested image) — see
+[Key custody](#key-custody--the-verifiable-kms). You set no signing key; the operator can't extract
+one. Verify the enclave, image digest, and the app's Derived Address at
 `https://verify-sepolia.eigencloud.xyz/app/<APP_ID>`.
+
+### On-chain anchoring (optional)
+
+By default each receipt is **signed and hash-chained**, not anchored — the same model the other
+attested-orchestrator demos use (signed receipt + TEE attestation + the dashboard's Derived Address).
+That already proves *who routed what, under which policy, in which attested image*, and makes
+tampering/reordering of the served log detectable.
+
+Anchoring is a **strengthening opt-in**: set `WAYBILL_RPC_URL` (Sepolia) and Waybill writes each
+receipt hash as a 0-value self-tx from the enclave wallet, adding an immutable **timestamp** and
+**anti-suppression** (a stranger can see if the operator withheld or forked the log). It costs gas, so
+the enclave wallet (its KMS-derived address, visible on first boot at `/healthz`) needs Sepolia ETH.
+Off unless `WAYBILL_RPC_URL` is set.
 
 ## Config
 
@@ -222,7 +240,7 @@ operator can't extract one. Verify the enclave + image digest, and the app's Der
 |-----|---------|---------|
 | `MNEMONIC` | KMS-injected wallet seed (enclave) — **auto-set by EigenCompute** | falls back to `WAYBILL_SIGNER_KEY` |
 | `WAYBILL_SIGNER_KEY` | local-dev signing key (`npm run verify keygen`) | required *only* if no `MNEMONIC` |
-| `WAYBILL_RPC_URL` | Sepolia RPC; anchors every receipt | local mode (no anchor) |
+| `WAYBILL_RPC_URL` | Sepolia RPC; enables **optional** per-receipt anchoring | off (signed + hash-chained only) |
 | `IMAGE_DIGEST` | on-chain image digest | `"unknown"` |
 | `ECLOUD_APP_ID` | EigenCompute app id; builds the `/verify` link | `"local"` |
 | `SAKANA_API_KEY` | native Sakana Fugu key (fugu + fugu-ultra) | mock mode |
@@ -274,11 +292,12 @@ Without it, the **API, verifier CLI, and self-checks still work** — only `npm 
 
 ## Honest scope (v1)
 
-CPU-only TDX (no in-enclave GPU inference). Developer-is-trusted on mainnet alpha. Anchors every
-receipt as a self-tx on Sepolia — switch to per-run roots via a contract if cost matters. The signer
-is a sealed-secret key, not yet a true enclave-*derived* wallet (upgrade path noted in `src/signer.ts`).
-Roadmap: pin provider response metadata, optional provider-signed responses, and chaining an attested
-inference provider so the model becomes verifiable too.
+CPU-only TDX (no in-enclave GPU inference). Developer-is-trusted on mainnet alpha. Receipts are signed
++ hash-chained by default; optional per-receipt anchoring uses a self-tx on Sepolia — switch to
+per-run roots via a contract if you enable it and cost matters. Chain state is in-memory per process
+(persist or read `prev_hash` from the last receipt if you run multiple instances). Roadmap: pin
+provider response metadata, optional provider-signed responses, and chaining an attested inference
+provider so the model becomes verifiable too.
 
 ## License
 
