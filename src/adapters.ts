@@ -29,7 +29,7 @@ const BASE_URL = (
 const MODEL_MAP: Record<string, string> = process.env.FUGU_MODEL_MAP
   ? JSON.parse(process.env.FUGU_MODEL_MAP)
   : OPENROUTER
-    ? { fugu: "sakana/fugu-ultra", "fugu-ultra": "sakana/fugu-ultra" }
+    ? { "fugu-ultra": "sakana/fugu-ultra" }
     : {};
 
 /** Send prompt to the chosen Fugu model, return the response text. */

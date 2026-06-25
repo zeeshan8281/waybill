@@ -1,6 +1,7 @@
 node_modules/
 .env
-public/
+# built SPA output (Vite writes here); web/public/ is source and IS tracked
+/public/
 
 # receipt/chain dumps written by the verifier (root level only)
 /*.json

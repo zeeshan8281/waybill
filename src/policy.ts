@@ -2,36 +2,29 @@
  * Minimal declarative routing policy.
  *
  * The policy is plain data: an ordered list of (predicate, model) rules. The
- * first matching rule wins; the last rule is the catch-all default. POLICY_HASH
- * is the sha256 of THIS file's source, so a receipt pins exactly which routing
- * logic ran.
+ * first matching rule wins. POLICY_HASH is the sha256 of THIS file's source, so
+ * a receipt pins exactly which routing logic ran — change the pool or the rules
+ * and every verifier sees a different policy_hash.
  *
- * ponytail: rules-as-data, not a DSL. Bring-your-own policy = replace RULES +
- * route(). Swap in a classifier later if keyword matching measurably falls short.
+ * v1 pool: a single real Sakana Fugu tier, `fugu-ultra` (https://api.sakana.ai/v1,
+ * also OpenRouter sakana/fugu-ultra). The base `fugu` tier is intentionally out
+ * of the pool. Add a model to CANDIDATES + a rule and the routing decision
+ * becomes non-trivial — that's the extension point the receipt makes verifiable.
+ *
+ * ponytail: rules-as-data, not a DSL. Swap in a classifier later if needed.
  */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-// Real Sakana Fugu model ids (https://api.sakana.ai/v1, /v1/models). Fugu exposes
-// two tiers: `fugu` (balanced, low latency) and `fugu-ultra` (max quality). The
-// router escalates code/long tasks to Ultra, everything else stays on base Fugu.
-export const FUGU = "fugu";
+// The only model the router can pick today. Fugu Ultra is itself a multi-agent
+// orchestrator across frontier models — Waybill attests which tier it chose.
 export const ULTRA = "fugu-ultra";
 
-const CODE_RE = /\b(code|bug|function|stack ?trace|refactor|compile|regex|api|sql)\b/i;
+// Ordered rules: [predicate, model]. First match wins. One model ⇒ one rule.
+const RULES: ReadonlyArray<[(p: string) => boolean, string]> = [[() => true, ULTRA]];
 
-const isCode = (prompt: string): boolean => CODE_RE.test(prompt);
-const isLong = (prompt: string): boolean => prompt.length > 2000;
-
-// Ordered rules: [predicate, model]. First match wins.
-const RULES: ReadonlyArray<[(p: string) => boolean, string]> = [
-  [isCode, ULTRA],
-  [isLong, ULTRA],
-  [() => true, FUGU], // default
-];
-
-export const CANDIDATES = [FUGU, ULTRA];
+export const CANDIDATES = [ULTRA];
 
 // sha256 of this source file — the on-the-wire identity of the routing logic.
 export const POLICY_HASH = createHash("sha256")
@@ -43,5 +36,5 @@ export function route(prompt: string): string {
   for (const [predicate, model] of RULES) {
     if (predicate(prompt)) return model;
   }
-  return FUGU; // unreachable; keeps type checkers happy
+  return ULTRA; // unreachable; keeps type checkers happy
 }

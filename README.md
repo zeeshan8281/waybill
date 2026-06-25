@@ -53,8 +53,8 @@ A **receipt** is canonical JSON like:
 {
   "task_id": "…",
   "input_hash":    "sha256(prompt)",
-  "candidates":    ["fugu", "fugu-ultra"],   // models the policy could pick
-  "chosen_model":  "fugu-ultra",             // the one it did pick
+  "candidates":    ["fugu-ultra"],           // models in the policy's pool
+  "chosen_model":  "fugu-ultra",             // the one it picked
   "policy_hash":   "sha256(policy source)",  // pins the exact routing logic
   "response_hash": "sha256(answer)",
   "image_digest":  "the on-chain enclave image",
@@ -183,17 +183,14 @@ dev convenience and `key_source` is `"local-key"` — no custody claim.
 
 ## Routing policy
 
-Plain data — an ordered list of `(predicate, model)` rules; first match wins. The catch-all is the
-default. `POLICY_HASH` is the sha256 of [`src/policy.ts`](src/policy.ts), so each receipt pins exactly
-which routing logic ran. Two real [Sakana Fugu](https://sakana.ai/fugu/) tiers:
+Plain data — an ordered list of `(predicate, model)` rules; first match wins. `POLICY_HASH` is the
+sha256 of [`src/policy.ts`](src/policy.ts), so each receipt pins exactly which routing logic ran —
+change the pool or the rules and every verifier sees a different hash.
 
-| If the prompt… | → model |
-|---|---|
-| looks like code (`bug`, `function`, `sql`, `refactor`, …) | `fugu-ultra` |
-| is long (> 2000 chars) | `fugu-ultra` |
-| otherwise | `fugu` |
-
-Bring your own policy by editing `RULES` + `route()`; swap in a classifier if keyword matching falls short.
+The **v1 pool is a single real [Sakana Fugu](https://sakana.ai/fugu/) tier, `fugu-ultra`** (Ultra is
+itself a multi-agent orchestrator across frontier models). So every receipt attests "routed to
+`fugu-ultra`". Add a model to `CANDIDATES` + a rule in `RULES` and the routing choice becomes
+non-trivial — that's the extension point the signed receipt makes verifiable.
 
 ## Deploy to EigenCompute (TDX)
 
@@ -243,7 +240,7 @@ Off unless `WAYBILL_RPC_URL` is set.
 | `WAYBILL_RPC_URL` | Sepolia RPC; enables **optional** per-receipt anchoring | off (signed + hash-chained only) |
 | `IMAGE_DIGEST` | on-chain image digest | `"unknown"` |
 | `ECLOUD_APP_ID` | EigenCompute app id; builds the `/verify` link | `"local"` |
-| `SAKANA_API_KEY` | native Sakana Fugu key (fugu + fugu-ultra) | mock mode |
+| `SAKANA_API_KEY` | native Sakana Fugu key | mock mode |
 | `OPENROUTER_API_KEY` | OpenRouter key; serves `sakana/fugu-ultra` | mock mode |
 | `FUGU_API_URL` | base URL override | inferred from the key |
 | `FUGU_MODEL_MAP` | JSON map: router id → provider model id | provider default |

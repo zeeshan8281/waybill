@@ -121,6 +121,19 @@ export function App() {
   return (
     <TooltipProvider>
       <div className="mx-auto max-w-4xl px-5 py-8 pb-20">
+        {/* Top nav */}
+        <nav className="mb-8 flex items-center justify-between border-b pb-4">
+          <img src="/eigenlabs-logo.png" alt="Eigen Labs" className="h-5 w-auto opacity-90" />
+          <a
+            href="https://www.eigencloud.xyz/"
+            target="_blank"
+            rel="noreferrer"
+            className="font-mono text-[11px] text-muted-foreground hover:text-foreground"
+          >
+            EigenCompute ↗
+          </a>
+        </nav>
+
         {/* Header */}
         <header className="mb-7 flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-3">

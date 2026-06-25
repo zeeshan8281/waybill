@@ -51,9 +51,9 @@ test("chain links", async () => {
   assert.deepEqual([r0.seq, r1.seq], [0, 1]);
 });
 
-test("policy routes distinctly", () => {
-  assert.equal(policy.route("fix this bug in my function"), policy.ULTRA); // code → ultra
-  assert.equal(policy.route("x".repeat(3000)), policy.ULTRA); // long → ultra
-  assert.equal(policy.route("hello there"), policy.FUGU); // default → base fugu
+test("policy routes to the single fugu-ultra tier", () => {
+  assert.equal(policy.route("fix this bug in my function"), policy.ULTRA);
+  assert.equal(policy.route("hello there"), policy.ULTRA);
+  assert.deepEqual(policy.CANDIDATES, [policy.ULTRA]);
   assert.equal(policy.POLICY_HASH.length, 64);
 });
