@@ -2,16 +2,34 @@
 @source "../node_modules/@layr-labs/eigen-design/dist";
 @import "@layr-labs/eigen-design/styles";
 
-/* Map the design tokens onto the Geist webfonts loaded in index.html. */
+/*
+ * App-level extensions — these come AFTER the eigen-design import so they win
+ * (the skill's documented override mechanism). We add the semantic status
+ * colors the base token set doesn't ship (eigen verify convention: pass=emerald,
+ * warn=amber; destructive ships already), and bind the font tokens to the Geist
+ * webfonts loaded in index.html.
+ */
 @theme {
   --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
+
+  --color-success: #34d399;
+  --color-success-foreground: #052e1e;
+  --color-warning: #fbbf24;
+  --color-warning-foreground: #2e2306;
 }
 
 @layer base {
   html,
   body {
     font-family: var(--font-sans);
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.02em;
   }
   body {
     /* Eigen ambient indigo wash on the near-black surface. */
@@ -20,8 +38,4 @@
       radial-gradient(900px 480px at 0% 0%, rgba(26, 12, 109, 0.22), transparent 55%);
     background-attachment: fixed;
   }
-}
-
-.mono {
-  font-family: var(--font-mono);
 }
