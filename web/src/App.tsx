@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import {
   verifyReceipt,
+  verifyDigest,
   sha256Hex,
   short,
   type Receipt,
@@ -300,6 +301,13 @@ export function App() {
                 <Field k="signature" v={result.receipt.signature} />
                 <Field k="signer" v={result.receipt.signer} hl />
               </dl>
+              <div className="rounded-lg border border-dashed p-3 text-[11px]">
+                <div className="mb-1 font-mono text-muted-foreground">
+                  verify on the EigenCloud dashboard — paste this as <b>Message / Data</b> with “Data is pre-hashed” checked, plus the <b>signature</b> above:
+                </div>
+                <div className="font-mono text-xs break-all text-foreground">{verifyDigest(result.receipt.hash)}</div>
+                <div className="mt-1 font-mono text-muted-foreground">→ recovers <span className="text-foreground">{result.receipt.signer}</span></div>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -332,8 +340,58 @@ export function App() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Why you can trust this */}
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>Why you can trust this</CardTitle>
+            <CardDescription>Verifiable orchestration rests on three pieces — each grounded in a mechanism, not a promise.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            <Trust title="Enclave trust" icon={Cpu}>
+              The router runs inside an Intel TDX enclave on EigenCompute. The host operator is isolated from
+              it — they can't read it, alter the routing logic, or forge what it does.
+            </Trust>
+            <Trust title="Key trust" icon={KeyRound}>
+              The signing key is a KMS-bound mnemonic only the attested image can decrypt inside the enclave —
+              so a valid signature provably came from the exact, unmodified router, not from the operator.
+            </Trust>
+            <Trust title="Receipt trust" icon={ShieldCheck}>
+              Every routing decision is signed and hash-chained — which model was picked, under which policy,
+              with each pipeline step's hash. Anyone re-checks it offline; suppression and reordering show up.
+            </Trust>
+            <div className="flex flex-wrap gap-4 pt-1 font-mono text-[11px]">
+              {info?.attestation.verify_url && (
+                <a href={info.attestation.verify_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-foreground hover:underline">
+                  Check the TEE attestation <ExternalLink className="size-3" />
+                </a>
+              )}
+              <a href="https://github.com/zeeshan8281/waybill" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-foreground hover:underline">
+                Read the source <ExternalLink className="size-3" />
+              </a>
+            </div>
+            <p className="border-t pt-3 text-[12px] text-muted-foreground">
+              <b className="text-foreground">Honest scope.</b> Waybill verifies the <i>orchestration</i>, not the
+              <i> inference</i>. Fugu runs outside the enclave — the receipt is honest that “the router asked for
+              fugu-ultra and got a response hashing to H,” never that the provider truly served it. Fugu Ultra does
+              its own internal orchestration of frontier models; Waybill makes the routing around it verifiable.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     </TooltipProvider>
+  );
+}
+
+function Trust({ title, icon: Icon, children }: { title: string; icon: typeof Cpu; children: ReactNode }) {
+  return (
+    <div className="flex gap-3">
+      <div className="mt-0.5 shrink-0 rounded-md border bg-secondary/40 p-1.5"><Icon className="size-4 text-foreground" /></div>
+      <div className="min-w-0">
+        <div className="font-medium">{title}</div>
+        <p className="text-muted-foreground">{children}</p>
+      </div>
+    </div>
   );
 }
 

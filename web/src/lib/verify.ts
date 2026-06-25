@@ -1,4 +1,13 @@
-import { verifyMessage, getBytes, sha256, toUtf8Bytes } from "ethers";
+import { verifyMessage, getBytes, sha256, toUtf8Bytes, hashMessage } from "ethers";
+
+/**
+ * The exact 32-byte digest that was ECDSA-signed (EIP-191 prefix applied to the
+ * receipt hash bytes). Paste this into the EigenCloud "Verify a Signature" tool
+ * with "Data is pre-hashed" checked — it recovers the signer with no ambiguity.
+ */
+export function verifyDigest(receiptHash: string): string {
+  return hashMessage(getBytes("0x" + receiptHash));
+}
 
 export interface Receipt {
   task_id: string;
