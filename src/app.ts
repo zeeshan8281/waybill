@@ -27,6 +27,10 @@ import * as signer from "./signer.js";
 const IMAGE_DIGEST = process.env.IMAGE_DIGEST ?? "unknown";
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
 
+// Last-resort safety net: a stray async error must never take down the TEE VM.
+process.on("unhandledRejection", (e) => console.error("unhandledRejection:", e));
+process.on("uncaughtException", (e) => console.error("uncaughtException:", e));
+
 const app = express();
 app.use(express.json());
 app.use(express.static(PUBLIC_DIR)); // serves the UI at /
@@ -65,23 +69,29 @@ app.post("/route", async (req, res) => {
     return;
   }
 
-  const chosen = policy.route(prompt);
-  const response = await adapters.callModel(chosen, prompt);
+  try {
+    const chosen = policy.route(prompt);
+    const response = await adapters.callModel(chosen, prompt);
 
-  const prevHash = chain.length ? chain[chain.length - 1].hash : receiptMod.ZERO_HASH;
-  const rcpt = await receiptMod.build({
-    taskId: randomUUID(),
-    prompt,
-    chosenModel: chosen,
-    response,
-    imageDigest: IMAGE_DIGEST,
-    prevHash,
-    seq: chain.length,
-  });
-  rcpt.anchor_tx = await anchor.anchor(rcpt.hash);
-  chain.push(rcpt);
+    const prevHash = chain.length ? chain[chain.length - 1].hash : receiptMod.ZERO_HASH;
+    const rcpt = await receiptMod.build({
+      taskId: randomUUID(),
+      prompt,
+      chosenModel: chosen,
+      response,
+      imageDigest: IMAGE_DIGEST,
+      prevHash,
+      seq: chain.length,
+    });
+    rcpt.anchor_tx = await anchor.anchor(rcpt.hash);
+    chain.push(rcpt);
 
-  res.json({ answer: response, receipt: rcpt });
+    res.json({ answer: response, receipt: rcpt });
+  } catch (e) {
+    // A provider/model error must never crash the enclave. Return it, stay up.
+    console.error("route failed:", e);
+    res.status(502).json({ error: "model call failed", detail: (e as Error).message });
+  }
 });
 
 const PORT = Number(process.env.PORT ?? 8080);

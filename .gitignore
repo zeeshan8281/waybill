@@ -11,3 +11,4 @@ node_modules/
 # private design system — see README (vendor it or install with GITHUB_TOKEN)
 web/vendor/
 *.tsbuildinfo
+.env.deploy
