@@ -1,4 +1,4 @@
-import { verifyMessage, getBytes } from "ethers";
+import { verifyMessage, getBytes, sha256, toUtf8Bytes } from "ethers";
 
 export interface Receipt {
   task_id: string;
@@ -46,9 +46,10 @@ function canonical(v: unknown): string {
   return JSON.stringify(v);
 }
 
+// Uses ethers' pure-JS sha256 (not WebCrypto's crypto.subtle) so verification
+// works in non-secure contexts too — e.g. the TEE served over plain http.
 export async function sha256Hex(str: string): Promise<string> {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return sha256(toUtf8Bytes(str)).slice(2); // strip 0x
 }
 
 async function receiptHash(r: Record<string, unknown>): Promise<string> {
