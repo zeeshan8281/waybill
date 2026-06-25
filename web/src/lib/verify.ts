@@ -23,6 +23,7 @@ export interface Attestation {
   attestation_hash: string;
   verify_url: string | null;
   source: "tee" | "local-dev";
+  key_source: "kms-mnemonic" | "local-key";
 }
 
 const META = new Set(["signature", "hash", "signer", "anchor_tx"]);

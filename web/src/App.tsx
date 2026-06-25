@@ -14,7 +14,7 @@ import {
   TooltipTrigger,
   cn,
 } from "@layr-labs/eigen-design";
-import { CheckCircle2, XCircle, ShieldCheck, ExternalLink, Cpu } from "lucide-react";
+import { CheckCircle2, XCircle, ShieldCheck, ExternalLink, Cpu, KeyRound } from "lucide-react";
 import {
   verifyReceipt,
   short,
@@ -145,9 +145,21 @@ export function App() {
               <Cpu />
               {info ? (tee ? "inside TEE" : "local-dev") : "…"}
             </Badge>
-            <span>
-              signer{" "}
-              {info ? <Trunc value={info.signer} n={12} /> : "…"}
+            <span className="inline-flex items-center gap-1.5">
+              signer {info ? <Trunc value={info.signer} n={12} /> : "…"}
+              {info?.attestation.key_source === "kms-mnemonic" && (
+                <Tooltip>
+                  <TooltipTrigger className="cursor-default">
+                    <Badge variant="outline" className="gap-1 border-success/30 bg-success/10 text-success">
+                      <KeyRound />
+                      KMS
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    KMS-derived enclave wallet — verify it equals the app's Derived Address on the dashboard
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </span>
             {info?.attestation.verify_url ? (
               <a

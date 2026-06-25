@@ -146,6 +146,38 @@ What it checks (offline unless `WAYBILL_RPC_URL` is set for the anchor step):
 The enclave/image step (TD Quote + on-chain image digest) is the EigenCompute verify dashboard:
 `https://verify-sepolia.eigencloud.xyz/app/<APP_ID>`.
 
+## Key custody & the verifiable KMS
+
+The whole proof rests on one thing: *only the genuine attested router could have produced that
+signature.* That holds because of **where the signing key comes from** — and it's the part the launch
+piece opens with (the Taiko bridge lost ~$1.7M when an enclave signing key was committed to a public
+repo: "TEE attestation is worthless without key custody").
+
+So Waybill never holds or sets a key in the enclave. On EigenCompute the **KMS injects a BIP39
+mnemonic** at `process.env.MNEMONIC`, bound to `ECLOUD_APP_ID` and the attested image, decryptable
+*only inside this enclave*. `src/signer.ts` derives the wallet from it (`ethers.Wallet.fromPhrase`).
+The operator never chose or saw the key — a cost-cutting fork that always picks the cheap model boots
+a different image, gets a different mnemonic, and **cannot forge a signature from the real address**.
+
+How a stranger verifies the signer *is* that KMS wallet (the "verifiable KMS" loop), trusting no one:
+
+```
+receipt.signature ──recover──▶ address A
+                                   │  must equal
+                                   ▼
+   the app's Derived Address  ◀── KMS derives it from the mnemonic it bound to ──┐
+   on verify-sepolia.eigencloud.xyz/app/<APP_ID>                                 │
+                                   ▲                                             │
+                                   └── for the on-chain image digest ───────────┘
+                                       (reproduce the Docker hash; don't trust it)
+```
+
+`signer == Derived Address` **and** `recorded image digest == your reproduced build` ⇒ the signature
+came from the exact, unmodified router in a real TEE. `GET /verify` reports
+`attestation.key_source: "kms-mnemonic"` when the enclave path is active (vs `"local-key"` in dev), so
+you can see at a glance whether the signer is the KMS wallet. Locally, `WAYBILL_SIGNER_KEY` is just a
+dev convenience and `key_source` is `"local-key"` — no custody claim.
+
 ## Routing policy
 
 Plain data — an ordered list of `(predicate, model)` rules; first match wins. The catch-all is the
@@ -168,8 +200,9 @@ docker build --platform linux/amd64 \
   --build-arg BUILD_TIME=$(date -u +%FT%TZ) \
   -t <registry/waybill:tag> . && docker push <registry/waybill:tag>
 
+# No signing key here — the KMS injects MNEMONIC into the enclave automatically.
 ecloud compute app env set \
-  WAYBILL_SIGNER_KEY=0x... WAYBILL_RPC_URL=https://sepolia... \
+  WAYBILL_RPC_URL=https://sepolia... \
   SAKANA_API_KEY=... IMAGE_DIGEST=<digest> ECLOUD_APP_ID=<app-id>
 
 rm -f Dockerfile && touch .env
@@ -178,15 +211,17 @@ echo n | ecloud compute app deploy --name waybill --image-ref <registry/waybill:
   --log-visibility public --resource-usage-monitoring enable --verbose
 ```
 
-`WAYBILL_SIGNER_KEY` is a **sealed secret** — decryptable only inside the attested TEE, so a valid
-signature traces to a key that exists only in the genuine enclave running the on-chain-recorded image.
-Verify the enclave + image digest at `https://verify-sepolia.eigencloud.xyz/app/<APP_ID>`.
+The signing wallet is **KMS-derived** (`MNEMONIC`, injected into the enclave, bound to the app +
+attested image) — see [Key custody](#key-custody--the-verifiable-kms). You set no signing key; the
+operator can't extract one. Verify the enclave + image digest, and the app's Derived Address, at
+`https://verify-sepolia.eigencloud.xyz/app/<APP_ID>`.
 
 ## Config
 
 | env | meaning | unset → |
 |-----|---------|---------|
-| `WAYBILL_SIGNER_KEY` | enclave-bound signing key | **required** |
+| `MNEMONIC` | KMS-injected wallet seed (enclave) — **auto-set by EigenCompute** | falls back to `WAYBILL_SIGNER_KEY` |
+| `WAYBILL_SIGNER_KEY` | local-dev signing key (`npm run verify keygen`) | required *only* if no `MNEMONIC` |
 | `WAYBILL_RPC_URL` | Sepolia RPC; anchors every receipt | local mode (no anchor) |
 | `IMAGE_DIGEST` | on-chain image digest | `"unknown"` |
 | `ECLOUD_APP_ID` | EigenCompute app id; builds the `/verify` link | `"local"` |

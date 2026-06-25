@@ -1,29 +1,52 @@
 /**
- * Enclave-bound signing key.
+ * Enclave-bound signing key — KMS-derived wallet (closes the key-custody gap).
  *
- * On EigenCompute, WAYBILL_SIGNER_KEY is a sealed secret — set via
- * `ecloud compute app env set` and decryptable only inside the attested TEE. So
- * a valid signature traces to a key that exists only in the genuine enclave
- * running the on-chain-recorded image.
+ * On EigenCompute the KMS injects a BIP39 mnemonic at process.env.MNEMONIC,
+ * bound to ECLOUD_APP_ID and the attested image, decryptable ONLY inside this
+ * enclave and stable across `ecloud compute app upgrade`. We derive the
+ * orchestrator's wallet from it (ethers.Wallet.fromPhrase) — the operator never
+ * chose or saw the key, so a valid signature provably came from the genuine
+ * attested image running in a real TEE.
  *
- * ponytail: a sealed-secret key, not a true enclave-DERIVED wallet. Upgrade
- * path: swap loadAccount() for EigenCompute's enclave key API when exposed, so
- * the key provably never existed outside the TD. Named so we don't overclaim.
+ * This is the Taiko lesson the launch piece opens with: TEE attestation is
+ * worthless without key custody. Custody lives with the KMS, not with us — we
+ * never hold or set a key in the enclave path.
+ *
+ * Local dev: MNEMONIC is empty, so fall back to WAYBILL_SIGNER_KEY (a raw key
+ * from `npm run verify keygen`). That fallback never runs inside the enclave.
+ *
+ * Verifying the signer IS the genuine KMS wallet (the "verifiable KMS" step):
+ * recover the address from a receipt, then confirm it equals the app's *Derived
+ * Address* on the EigenCloud Verifiability Dashboard for the on-chain image
+ * digest. signer == derived address + reproduced image hash ⇒ trust, with no
+ * trust in the operator. See README.
  *
  * Signatures are EIP-191 (personal_sign) over the 32 raw bytes of the receipt
  * hash — sign/recover operate on the bytes, not the hex text.
  */
-import { Wallet, verifyMessage, getBytes } from "ethers";
+import { Wallet, HDNodeWallet, verifyMessage, getBytes } from "ethers";
 
-export function loadAccount(): Wallet {
-  const KEY = process.env.WAYBILL_SIGNER_KEY;
-  if (!KEY) {
-    throw new Error(
-      "WAYBILL_SIGNER_KEY not set. Generate one with " +
-        "`npm run verify keygen` and set it as a sealed secret.",
-    );
-  }
-  return new Wallet(KEY);
+type Signer = Wallet | HDNodeWallet;
+let cached: Signer | undefined;
+
+export function loadAccount(): Signer {
+  if (cached) return cached;
+
+  const mnemonic = process.env.MNEMONIC?.trim();
+  if (mnemonic) return (cached = Wallet.fromPhrase(mnemonic)); // KMS-injected, enclave-bound
+
+  const key = process.env.WAYBILL_SIGNER_KEY?.trim();
+  if (key) return (cached = new Wallet(key)); // local dev / explicit key
+
+  throw new Error(
+    "No signing key. On EigenCompute the KMS injects MNEMONIC automatically; " +
+      "for local dev set WAYBILL_SIGNER_KEY (`npm run verify keygen`) or a MNEMONIC.",
+  );
+}
+
+/** True when the wallet is derived from the KMS-injected mnemonic (enclave path). */
+export function isKmsDerived(): boolean {
+  return Boolean(process.env.MNEMONIC?.trim());
 }
 
 const hashBytes = (receiptHashHex: string) =>

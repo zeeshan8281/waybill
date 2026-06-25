@@ -24,6 +24,9 @@ export interface Attestation {
   attestation_hash: string;
   verify_url: string | null;
   source: "tee" | "local-dev";
+  // "kms-mnemonic" → signer is the KMS-derived enclave wallet (verify it against
+  // the app's Derived Address on the dashboard). "local-key" → a local dev key.
+  key_source: "kms-mnemonic" | "local-key";
 }
 
 export function readAttestation(): Attestation {
@@ -34,6 +37,7 @@ export function readAttestation(): Attestation {
     build_time: process.env.BUILD_TIME ?? "unknown",
     verify_url:
       appId !== "local" ? `https://verify-sepolia.eigencloud.xyz/app/${appId}` : null,
+    key_source: process.env.MNEMONIC?.trim() ? ("kms-mnemonic" as const) : ("local-key" as const),
   };
 
   if (existsSync(KMS_PEM_PATH)) {
