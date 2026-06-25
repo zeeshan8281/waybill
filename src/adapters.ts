@@ -1,35 +1,56 @@
 /**
- * External model adapter — Sakana Fugu (OpenAI-compatible).
+ * External model adapter — OpenAI-compatible (Sakana Fugu or OpenRouter).
  *
- * Fugu is itself a multi-agent orchestrator served as one OpenAI-compatible API
- * (https://api.sakana.ai/v1). We hit the Chat Completions endpoint. Inference
- * happens OUTSIDE the enclave boundary, so the receipt is honest about "the
- * router asked for model X and received a response hashing to H" — not that X
- * definitely produced H. See README trust model.
+ * Fugu is itself a multi-agent orchestrator served as one OpenAI-compatible API.
+ * We hit the Chat Completions endpoint of whichever provider is configured:
+ *   - SAKANA_API_KEY  → https://api.sakana.ai/v1   (native; fugu + fugu-ultra)
+ *   - OPENROUTER_API_KEY → https://openrouter.ai/api/v1 (serves sakana/fugu-ultra)
  *
- * ponytail: if SAKANA_API_KEY is unset we run in mock mode so the demo works
- * without a key. Set the key (sealed secret on EigenCompute) to route for real.
+ * The receipt's chosen_model records the ROUTER's decision (fugu | fugu-ultra);
+ * MODEL_MAP translates that to the provider's model id at call time. OpenRouter
+ * only serves Ultra, so both tiers map to sakana/fugu-ultra there.
+ *
+ * Inference happens OUTSIDE the enclave boundary — the receipt is honest about
+ * "the router asked for model X and received a response hashing to H", not that
+ * X definitely produced H. See README trust model.
+ *
+ * ponytail: provider picked from whichever key is set; mock when neither is.
  */
 import { createHash } from "node:crypto";
 
-const FUGU_API_URL = (process.env.FUGU_API_URL || "https://api.sakana.ai/v1").replace(/\/+$/, "");
-const SAKANA_API_KEY = process.env.SAKANA_API_KEY ?? "";
+const OPENROUTER = Boolean(process.env.OPENROUTER_API_KEY) && !process.env.SAKANA_API_KEY;
+const API_KEY = process.env.OPENROUTER_API_KEY || process.env.SAKANA_API_KEY || "";
+const BASE_URL = (
+  process.env.FUGU_API_URL ||
+  (OPENROUTER ? "https://openrouter.ai/api/v1" : "https://api.sakana.ai/v1")
+).replace(/\/+$/, "");
+
+// Router model id -> provider model id. Override with FUGU_MODEL_MAP (JSON).
+const MODEL_MAP: Record<string, string> = process.env.FUGU_MODEL_MAP
+  ? JSON.parse(process.env.FUGU_MODEL_MAP)
+  : OPENROUTER
+    ? { fugu: "sakana/fugu-ultra", "fugu-ultra": "sakana/fugu-ultra" }
+    : {};
 
 /** Send prompt to the chosen Fugu model, return the response text. */
 export async function callModel(model: string, prompt: string): Promise<string> {
-  if (!SAKANA_API_KEY) {
+  if (!API_KEY) {
     // mock: deterministic so tests/demos are reproducible offline.
     const digest = createHash("sha256").update(`${model}:${prompt}`).digest("hex").slice(0, 12);
     return `[mock ${model}] response to prompt (${digest})`;
   }
 
-  const resp = await fetch(`${FUGU_API_URL}/chat/completions`, {
+  const resp = await fetch(`${BASE_URL}/chat/completions`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${SAKANA_API_KEY}`,
+      Authorization: `Bearer ${API_KEY}`,
       "content-type": "application/json",
+      // OpenRouter attribution (optional, recommended).
+      ...(OPENROUTER
+        ? { "HTTP-Referer": "https://github.com/zeeshan8281/waybill", "X-Title": "Waybill" }
+        : {}),
     },
-    body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }] }),
+    body: JSON.stringify({ model: MODEL_MAP[model] ?? model, messages: [{ role: "user", content: prompt }] }),
     signal: AbortSignal.timeout(120_000),
   });
   if (!resp.ok) throw new Error(`Fugu ${resp.status}: ${await resp.text()}`);

@@ -97,9 +97,10 @@ curl -sX POST localhost:8080/route -H 'content-type: application/json' \
   -d '{"prompt":"fix the bug in this function"}'
 ```
 
-Runs **offline by default**: deterministic mock Fugu responses, no anchoring. Set `SAKANA_API_KEY`
-([console.sakana.ai](https://console.sakana.ai)) for real routing and `WAYBILL_RPC_URL` (Sepolia) to
-anchor every receipt.
+Runs **offline by default**: deterministic mock Fugu responses, no anchoring. For real routing set
+either `SAKANA_API_KEY` ([console.sakana.ai](https://console.sakana.ai)) or `OPENROUTER_API_KEY`
+([openrouter.ai/sakana/fugu-ultra](https://openrouter.ai/sakana/fugu-ultra)) in a local `.env`, and
+`WAYBILL_RPC_URL` (Sepolia) to anchor every receipt.
 
 > **Backend only?** `npm install && npm start` is enough for the API + verifier CLI. The UI build
 > step is the only part that needs the design system below.
@@ -127,10 +128,11 @@ curl -sX POST localhost:8080/route -H 'content-type: application/json' \
   'process.stdin.once("data",d=>require("fs").writeFileSync("r.json",JSON.stringify(JSON.parse(d).receipt)))'
 
 # verify it — recomputes the hash, recovers the signer, checks your prompt/answer
-npm run verify receipt r.json --prompt "fix the bug" --answer "<the answer>"
+# (the `--` separates npm's args from the script's flags)
+npm run verify -- receipt r.json --prompt "fix the bug" --answer "<the answer>"
 
 # verify a whole chain (links + monotonic seq)
-npm run verify chain chain.json
+npm run verify -- chain chain.json
 ```
 
 What it checks (offline unless `WAYBILL_RPC_URL` is set for the anchor step):
@@ -188,8 +190,13 @@ Verify the enclave + image digest at `https://verify-sepolia.eigencloud.xyz/app/
 | `WAYBILL_RPC_URL` | Sepolia RPC; anchors every receipt | local mode (no anchor) |
 | `IMAGE_DIGEST` | on-chain image digest | `"unknown"` |
 | `ECLOUD_APP_ID` | EigenCompute app id; builds the `/verify` link | `"local"` |
-| `SAKANA_API_KEY` | Sakana Fugu key; enables real routing | mock mode |
-| `FUGU_API_URL` | Fugu base URL override | `https://api.sakana.ai/v1` |
+| `SAKANA_API_KEY` | native Sakana Fugu key (fugu + fugu-ultra) | mock mode |
+| `OPENROUTER_API_KEY` | OpenRouter key; serves `sakana/fugu-ultra` | mock mode |
+| `FUGU_API_URL` | base URL override | inferred from the key |
+| `FUGU_MODEL_MAP` | JSON map: router id → provider model id | provider default |
+
+Set `SAKANA_API_KEY` **or** `OPENROUTER_API_KEY` for real routing (mock if neither). A local
+`.env` is loaded automatically; on EigenCompute these are sealed secrets.
 
 ## Layout
 

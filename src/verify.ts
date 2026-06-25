@@ -16,6 +16,8 @@
  * The enclave/image step (TD Quote + on-chain image digest) is the EigenCompute
  * verify dashboard: https://verify-sepolia.eigencloud.xyz/app/<APP_ID>
  */
+import "./env.js"; // load .env before anchor.ts reads WAYBILL_RPC_URL
+
 import { readFileSync } from "node:fs";
 
 import { Wallet } from "ethers";

@@ -9,6 +9,8 @@
  * ponytail: in-memory chain state, single process. Persist (or read prev_hash
  * from the last anchored tx) if you run multiple instances.
  */
+import "./env.js"; // load .env BEFORE any module reads process.env (must be first)
+
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
